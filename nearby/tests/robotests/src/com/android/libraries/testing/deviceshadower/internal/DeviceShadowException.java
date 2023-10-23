@@ -16,6 +16,7 @@
 
 package com.android.libraries.testing.deviceshadower.internal;
 
+<<<<<<< HEAD:nearby/tests/robotests/src/com/android/libraries/testing/deviceshadower/internal/DeviceShadowException.java
 /**
  * Internal exception to indicate error from DeviceShadower framework.
  */
@@ -33,4 +34,32 @@ public class DeviceShadowException extends Exception {
         super(msg, e);
     }
 
+=======
+import com.android.net.module.util.InetAddressUtils;
+import com.android.net.module.util.Struct;
+
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+
+/** Key type for ingress discard map */
+public class IngressDiscardKey extends Struct {
+    // The destination ip of the incoming packet. IPv4 uses IPv4-mapped IPv6 address.
+    @Field(order = 0, type = Type.Ipv6Address)
+    public final Inet6Address dstAddr;
+
+    public IngressDiscardKey(final Inet6Address dstAddr) {
+        this.dstAddr = dstAddr;
+    }
+
+    private static Inet6Address getInet6Address(final InetAddress addr) {
+        return (addr instanceof Inet4Address)
+                ? InetAddressUtils.v4MappedV6Address((Inet4Address) addr)
+                : (Inet6Address) addr;
+    }
+
+    public IngressDiscardKey(final InetAddress dstAddr) {
+        this(getInet6Address(dstAddr));
+    }
+>>>>>>> 77b49996d2 (Add methods for updating ingressDiscardRule bpf map to BpfNetMaps):common/src/com/android/net/module/util/bpf/IngressDiscardKey.java
 }
