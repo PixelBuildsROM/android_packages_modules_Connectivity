@@ -21,6 +21,7 @@ import static android.net.BpfNetMapsConstants.COOKIE_TAG_MAP_PATH;
 import static android.net.BpfNetMapsConstants.CURRENT_STATS_MAP_CONFIGURATION_KEY;
 import static android.net.BpfNetMapsConstants.HAPPY_BOX_MATCH;
 import static android.net.BpfNetMapsConstants.IIF_MATCH;
+import static android.net.BpfNetMapsConstants.INGRESS_DISCARD_MAP_PATH;
 import static android.net.BpfNetMapsConstants.LOCKDOWN_VPN_MATCH;
 import static android.net.BpfNetMapsConstants.PENALTY_BOX_MATCH;
 import static android.net.BpfNetMapsConstants.UID_OWNER_MAP_PATH;
@@ -76,9 +77,12 @@ import com.android.net.module.util.Struct.U32;
 import com.android.net.module.util.Struct.U8;
 import com.android.net.module.util.bpf.CookieTagMapKey;
 import com.android.net.module.util.bpf.CookieTagMapValue;
+import com.android.net.module.util.bpf.IngressDiscardKey;
+import com.android.net.module.util.bpf.IngressDiscardValue;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -126,6 +130,7 @@ public class BpfNetMaps {
     private static IBpfMap<S32, UidOwnerValue> sUidOwnerMap = null;
     private static IBpfMap<S32, U8> sUidPermissionMap = null;
     private static IBpfMap<CookieTagMapKey, CookieTagMapValue> sCookieTagMap = null;
+    private static IBpfMap<IngressDiscardKey, IngressDiscardValue> sIngressDiscardMap = null;
 
     private static final List<Pair<Integer, String>> PERMISSION_LIST = Arrays.asList(
             Pair.create(PERMISSION_INTERNET, "PERMISSION_INTERNET"),
@@ -173,6 +178,15 @@ public class BpfNetMaps {
         sCookieTagMap = cookieTagMap;
     }
 
+    /**
+     * Set ingressDiscardMap for test.
+     */
+    @VisibleForTesting
+    public static void setIngressDiscardMapForTest(
+            IBpfMap<IngressDiscardKey, IngressDiscardValue> ingressDiscardMap) {
+        sIngressDiscardMap = ingressDiscardMap;
+    }
+
     private static IBpfMap<S32, U32> getConfigurationMap() {
         try {
             return new BpfMap<>(
@@ -209,6 +223,15 @@ public class BpfNetMaps {
         }
     }
 
+    private static IBpfMap<IngressDiscardKey, IngressDiscardValue> getIngressDiscardMap() {
+        try {
+            return new BpfMap<>(INGRESS_DISCARD_MAP_PATH, BpfMap.BPF_F_RDWR,
+                    IngressDiscardKey.class, IngressDiscardValue.class);
+        } catch (ErrnoException e) {
+            throw new IllegalStateException("Cannot open ingress discard map", e);
+        }
+    }
+
     private static void initBpfMaps() {
         if (sConfigurationMap == null) {
             sConfigurationMap = getConfigurationMap();
@@ -241,6 +264,15 @@ public class BpfNetMaps {
 
         if (sCookieTagMap == null) {
             sCookieTagMap = getCookieTagMap();
+        }
+
+        if (sIngressDiscardMap == null) {
+            sIngressDiscardMap = getIngressDiscardMap();
+        }
+        try {
+            sIngressDiscardMap.clear();
+        } catch (ErrnoException e) {
+            throw new IllegalStateException("Failed to initialize ingress discard map", e);
         }
     }
 
@@ -277,6 +309,13 @@ public class BpfNetMaps {
          */
         public int getIfIndex(final String ifName) {
             return Os.if_nametoindex(ifName);
+        }
+
+        /**
+         * Get interface name
+         */
+        public String getIfName(final int ifIndex) {
+            return Os.if_indextoname(ifIndex);
         }
 
         /**
@@ -545,7 +584,7 @@ public class BpfNetMaps {
 
     private Set<Integer> asSet(final int[] uids) {
         final Set<Integer> uidSet = new ArraySet<>();
-        for (final int uid: uids) {
+        for (final int uid : uids) {
             uidSet.add(uid);
         }
         return uidSet;
@@ -932,6 +971,46 @@ public class BpfNetMaps {
         }
     }
 
+
+    /**
+     * Set ingress discard rule
+     *
+     * @param address target address to set the ingress discard rule
+     * @param iface allowed interface
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    public void setIngressDiscardRule(final InetAddress address, final String iface) {
+        throwIfPreT("setIngressDiscardRule is not available on pre-T devices");
+        final int ifIndex = mDeps.getIfIndex(iface);
+        if (ifIndex == 0) {
+            Log.e(TAG, "Failed to get if index, skip setting ingress discard rule for " + address
+                    + "(" + iface + ")");
+            return;
+        }
+        try {
+            sIngressDiscardMap.updateEntry(new IngressDiscardKey(address),
+                    new IngressDiscardValue(ifIndex, ifIndex));
+        } catch (ErrnoException e) {
+            Log.e(TAG, "Failed to set ingress discard rule for " + address + "("
+                    + iface + "), " + e);
+        }
+    }
+
+    /**
+     * Remove ingress discard rule
+     *
+     * @param address target address to remove the ingress discard rule
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    public void removeIngressDiscardRule(final InetAddress address) {
+        throwIfPreT("removeIngressDiscardRule is not available on pre-T devices");
+        try {
+            sIngressDiscardMap.deleteEntry(new IngressDiscardKey(address));
+        } catch (ErrnoException e) {
+            Log.e(TAG, "Failed to remove ingress discard rule for " + address + ", " + e);
+        }
+    }
+
     /** Register callback for statsd to pull atom. */
     public void setPullAtomCallback(final Context context) {
         throwIfPreT("setPullAtomCallback is not available on pre-T devices");
@@ -1061,6 +1140,10 @@ public class BpfNetMaps {
                     });
             BpfDump.dumpMap(sUidPermissionMap, pw, "sUidPermissionMap",
                     (uid, permission) -> uid.val + " " + permissionToString(permission.val));
+            BpfDump.dumpMap(sIngressDiscardMap, pw, "sIngressDiscardMap",
+                    (key, value) -> "[" + key.dstAddr + "]: "
+                            + value.iif1 + "(" + mDeps.getIfName(value.iif1) + "), "
+                            + value.iif2 + "(" + mDeps.getIfName(value.iif2) + ")");
             pw.decreaseIndent();
         }
     }

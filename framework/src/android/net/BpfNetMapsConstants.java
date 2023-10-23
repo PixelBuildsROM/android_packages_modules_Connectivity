@@ -43,6 +43,8 @@ public class BpfNetMapsConstants {
             "/sys/fs/bpf/netd_shared/map_netd_uid_permission_map";
     public static final String COOKIE_TAG_MAP_PATH =
             "/sys/fs/bpf/netd_shared/map_netd_cookie_tag_map";
+    public static final String INGRESS_DISCARD_MAP_PATH =
+            "/sys/fs/bpf/netd_shared/map_netd_ingress_discard_map";
     public static final Struct.S32 UID_RULES_CONFIGURATION_KEY = new Struct.S32(0);
     public static final Struct.S32 CURRENT_STATS_MAP_CONFIGURATION_KEY = new Struct.S32(1);
 
