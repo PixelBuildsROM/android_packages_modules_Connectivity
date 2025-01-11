@@ -978,7 +978,6 @@ public class BpfNetMaps {
      * @param address target address to set the ingress discard rule
      * @param iface allowed interface
      */
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public void setIngressDiscardRule(final InetAddress address, final String iface) {
         throwIfPreT("setIngressDiscardRule is not available on pre-T devices");
         final int ifIndex = mDeps.getIfIndex(iface);
@@ -1001,7 +1000,6 @@ public class BpfNetMaps {
      *
      * @param address target address to remove the ingress discard rule
      */
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public void removeIngressDiscardRule(final InetAddress address) {
         throwIfPreT("removeIngressDiscardRule is not available on pre-T devices");
         try {
